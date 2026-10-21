@@ -7,39 +7,62 @@
 #include "pc/configfile.h"
 #include "pc/network/moderator_list.h"
 
+// A full player list does not fit in a single packet at higher player
+// counts (roughly 181 bytes per player vs PACKET_LENGTH), so the list is
+// sent in chunks. The receiver processes each packet's entries
+// incrementally, so chunking is transparent to it.
+#define NETWORK_PLAYERS_PER_PACKET 12
+
 static void network_send_to_network_players(u8 sendToLocalIndex) {
     SOFT_ASSERT(gNetworkType == NT_SERVER);
     SOFT_ASSERT(sendToLocalIndex != 0);
 
-    u8 connectedCount = network_player_connected_count();
-
-    struct Packet p = { 0 };
-    packet_init(&p, PACKET_NETWORK_PLAYERS, true, PLMT_NONE);
-    packet_write(&p, &connectedCount, sizeof(u8));
+    // collect the connected players
+    s32 connected[MAX_PLAYERS];
+    u8 connectedCount = 0;
     for (s32 i = 0; i < MAX_PLAYERS; i++) {
-        if (!gNetworkPlayers[i].connected) { continue; }
-        u8 npType = gNetworkPlayers[i].type;
-        if (npType == NPT_LOCAL) { npType = NPT_SERVER; }
-        else if (i == sendToLocalIndex) { npType = NPT_LOCAL; }
-        s64 networkId = gNetworkSystem->get_id(i);
-        packet_write(&p, &npType,                                sizeof(u8));
-        packet_write(&p, &gNetworkPlayers[i].globalIndex,        sizeof(u8));
-        packet_write(&p, &gNetworkPlayers[i].currLevelAreaSeqId, sizeof(u16));
-        packet_write(&p, &gNetworkPlayers[i].currCourseNum,      sizeof(s16));
-        packet_write(&p, &gNetworkPlayers[i].currActNum,         sizeof(s16));
-        packet_write(&p, &gNetworkPlayers[i].currLevelNum,       sizeof(s16));
-        packet_write(&p, &gNetworkPlayers[i].currAreaIndex,      sizeof(s16));
-        packet_write(&p, &gNetworkPlayers[i].currLevelSyncValid, sizeof(u8));
-        packet_write(&p, &gNetworkPlayers[i].currAreaSyncValid,  sizeof(u8));
-        packet_write(&p, &networkId,                             sizeof(s64));
-        packet_write(&p, &gNetworkPlayers[i].modelIndex,         sizeof(u8));
-        packet_write(&p, &gNetworkPlayers[i].palette,            sizeof(struct PlayerPalette));
-        packet_write(&p, &gNetworkPlayers[i].name,               sizeof(u8) * MAX_CONFIG_STRING);
-        packet_write(&p, &gNetworkPlayers[i].discordId,          sizeof(u8) * 64);
-        LOG_INFO("send network player [%d == %d]", gNetworkPlayers[i].globalIndex, npType);
+        if (gNetworkPlayers[i].connected) { connected[connectedCount++] = i; }
     }
 
-    network_send_to(sendToLocalIndex, &p);
+    // send the list in chunks of at most NETWORK_PLAYERS_PER_PACKET players
+    s32 sent = 0;
+    do {
+        u8 chunkCount = 0;
+        if (connectedCount > 0) {
+            s32 remaining = connectedCount - sent;
+            chunkCount = (u8)((remaining > NETWORK_PLAYERS_PER_PACKET) ? NETWORK_PLAYERS_PER_PACKET : remaining);
+        }
+
+        struct Packet p = { 0 };
+        packet_init(&p, PACKET_NETWORK_PLAYERS, true, PLMT_NONE);
+        packet_write(&p, &chunkCount, sizeof(u8));
+        for (u8 j = 0; j < chunkCount; j++) {
+            s32 i = connected[sent + j];
+            u8 npType = gNetworkPlayers[i].type;
+            if (npType == NPT_LOCAL) { npType = NPT_SERVER; }
+            else if (i == sendToLocalIndex) { npType = NPT_LOCAL; }
+            s64 networkId = gNetworkSystem->get_id(i);
+            packet_write(&p, &npType,                                sizeof(u8));
+            packet_write(&p, &gNetworkPlayers[i].globalIndex,        sizeof(u8));
+            packet_write(&p, &gNetworkPlayers[i].currLevelAreaSeqId, sizeof(u16));
+            packet_write(&p, &gNetworkPlayers[i].currCourseNum,      sizeof(s16));
+            packet_write(&p, &gNetworkPlayers[i].currActNum,         sizeof(s16));
+            packet_write(&p, &gNetworkPlayers[i].currLevelNum,       sizeof(s16));
+            packet_write(&p, &gNetworkPlayers[i].currAreaIndex,      sizeof(s16));
+            packet_write(&p, &gNetworkPlayers[i].currLevelSyncValid, sizeof(u8));
+            packet_write(&p, &gNetworkPlayers[i].currAreaSyncValid,  sizeof(u8));
+            packet_write(&p, &networkId,                             sizeof(s64));
+            packet_write(&p, &gNetworkPlayers[i].modelIndex,         sizeof(u8));
+            packet_write(&p, &gNetworkPlayers[i].palette,            sizeof(struct PlayerPalette));
+            packet_write(&p, &gNetworkPlayers[i].name,               sizeof(u8) * MAX_CONFIG_STRING);
+            packet_write(&p, &gNetworkPlayers[i].discordId,          sizeof(u8) * 64);
+            LOG_INFO("send network player [%d == %d]", gNetworkPlayers[i].globalIndex, npType);
+        }
+        sent += chunkCount;
+
+        network_send_to(sendToLocalIndex, &p);
+    } while (sent < connectedCount);
+
     LOG_INFO("sent list of %d network players to %d", connectedCount, sendToLocalIndex);
 }
 
