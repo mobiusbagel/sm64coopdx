@@ -8,20 +8,31 @@ REPO_DIR="sm64coopdx-64p"
 BRANCH="maxplayers-64"
 URL="https://github.com/mobiusbagel/sm64coopdx.git"
 
-echo "==> Updating MSYS2 and installing build packages (first run takes a while)..."
-# Fresh MSYS2 installs ship a stale signing keyring; the first update then
-# stalls on a key-import prompt (e.g. the clangarm64 key). Bootstrap the
-# keyring non-interactively before updating.
-pacman-key --init >/dev/null 2>&1 || true
-pacman-key --populate msys2 >/dev/null 2>&1 || true
-pacman -Sy --noconfirm msys2-keyring >/dev/null 2>&1 || true
-pacman -Syu --noconfirm || true
+echo "==> Step 1/4: MSYS2 signing keyring (fresh installs ship a stale one)..."
+# Fresh MSYS2 installs ship a stale signing keyring; without this bootstrap,
+# pacman stalls on a key-import prompt (e.g. the clangarm64 key) that a
+# scripted shell cannot answer.
+pacman-key --init || true
+pacman-key --populate msys2 || true
+
+echo "==> Step 2/4: refreshing package databases..."
+# Deliberately NOT a full `pacman -Syu`: on fresh installs the core-runtime
+# upgrade makes MSYS2 kill its own shell mid-script and wait for a restart,
+# which hangs a scripted run. A database refresh is all a build needs.
+pacman -Sy --noconfirm || true
+pacman -S --noconfirm msys2-keyring || true
+pacman -Sy --noconfirm || true
+
+echo "==> Step 3/4: installing build packages..."
 if ! pacman -S --needed --noconfirm unzip make git zip python3 \
     mingw-w64-x86_64-gcc mingw-w64-x86_64-glew mingw-w64-x86_64-SDL2; then
     echo ""
-    echo "ERROR: package install failed. If MSYS2 just updated itself, simply run the .bat again."
+    echo "ERROR: package install failed. Re-run the .bat; if it fails again,"
+    echo "screenshot the output above and send it to Baymax."
     exit 1
 fi
+
+echo "==> Step 4/4: source and build..."
 
 if [ -d "$REPO_DIR/.git" ]; then
     echo "==> Updating existing clone..."
