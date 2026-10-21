@@ -11,9 +11,16 @@ URL="https://github.com/mobiusbagel/sm64coopdx.git"
 echo "==> Step 1/4: MSYS2 signing keyring (fresh installs ship a stale one)..."
 # Fresh MSYS2 installs ship a stale signing keyring; without this bootstrap,
 # pacman stalls on a key-import prompt (e.g. the clangarm64 key) that a
-# scripted shell cannot answer.
-pacman-key --init || true
-pacman-key --populate msys2 || true
+# scripted shell cannot answer. If a previous run was killed mid-migration,
+# gpg can wedge on the leftover state -- the timeouts bound that, and the
+# reset below rebuilds the keyring clean (safe: it holds only pacman's
+# package-signing keys, which --populate restores from shipped files).
+if ! timeout 90 pacman-key --init; then
+    echo "    Keyring init stalled -- resetting the pacman keyring and retrying..."
+    rm -rf /etc/pacman.d/gnupg
+    timeout 90 pacman-key --init || true
+fi
+timeout 120 pacman-key --populate msys2 || true
 
 echo "==> Step 2/4: refreshing package databases..."
 # Deliberately NOT a full `pacman -Syu`: on fresh installs the core-runtime
