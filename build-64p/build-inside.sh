@@ -9,6 +9,12 @@ BRANCH="maxplayers-64"
 URL="https://github.com/mobiusbagel/sm64coopdx.git"
 
 echo "==> Updating MSYS2 and installing build packages (first run takes a while)..."
+# Fresh MSYS2 installs ship a stale signing keyring; the first update then
+# stalls on a key-import prompt (e.g. the clangarm64 key). Bootstrap the
+# keyring non-interactively before updating.
+pacman-key --init >/dev/null 2>&1 || true
+pacman-key --populate msys2 >/dev/null 2>&1 || true
+pacman -Sy --noconfirm msys2-keyring >/dev/null 2>&1 || true
 pacman -Syu --noconfirm || true
 if ! pacman -S --needed --noconfirm unzip make git zip python3 \
     mingw-w64-x86_64-gcc mingw-w64-x86_64-glew mingw-w64-x86_64-SDL2; then

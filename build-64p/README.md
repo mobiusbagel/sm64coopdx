@@ -41,7 +41,9 @@ for you. You need **baserom.us.z64** (a US Super Mario 64 dump) in the
   compile). Re-runs are incremental and quick, and pull the latest
   branch changes first.
 - **If the first run stops during MSYS2's self-update**, just run the
-  .bat again — that's normal MSYS2 behavior.
+  .bat again — that's normal MSYS2 behavior. (A stall at a PGP key
+  import prompt on very fresh MSYS2 installs is handled automatically:
+  the script bootstraps the signing keyring before updating.)
 - **Clean rebuild:** run `build-sm64coopdx-64p.bat clean` from a
   command prompt in this folder.
 - **If the build fails**, copy the error text and send it to Baymax.
